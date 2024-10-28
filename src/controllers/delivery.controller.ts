@@ -1,12 +1,8 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getDeliveryZonesSchema } from "../schemas/getDeliveryZonesSchema";
 import { createDeliveryZonesSchema } from "../schemas/createDeliveryZonesSchema";
+import {getDeliveryZoneService} from '../services/getDeliveryZone.service'
 
-interface IDeliveryZoneFromDb {
-  id: number;
-  title: string;
-  polygon: string;
-}
 
 const deliveryControllers = (fastify: FastifyInstance, options, done) => {
   fastify.get(
@@ -22,43 +18,7 @@ const deliveryControllers = (fastify: FastifyInstance, options, done) => {
         };
       }>,
       reply: FastifyReply
-    ) => {
-      const { longitude, latitude } = req.query;
-
-      try {
-        const client = await fastify.pg.connect();
-        const { rows } = await client.query(
-          `SELECT id, title, st_astext(polygon) as polygon FROM delivery_zone WHERE ST_Intersects('POINT(${longitude} ${latitude})'::geometry, delivery_zone.polygon);`
-        );
-
-        const result = rows.map((zone: IDeliveryZoneFromDb) => {
-          const rings = zone.polygon.split("),(");
-
-          const polygon = rings.reduce((acc, element) => {
-            const coordinates = element.split(",");
-            const res = coordinates.reduce((acc1, element1) => {
-              acc1.push(JSON.parse("[" + element1.match(/\d+/g) + "]"));
-              return acc1;
-            }, []);
-            acc.push(res);
-            return acc;
-          }, []);
-
-          return {
-            id: zone.id,
-            title: zone.title,
-            polygon: {
-              type: "Polygon",
-              coordinates: polygon,
-            },
-          };
-        });
-
-        reply.code(200).send(result);
-      } catch (error) {
-        console.log(error);
-      }
-    }
+    ) => getDeliveryZoneService(fastify, req, reply)
   );
 
   fastify.post(
@@ -80,7 +40,10 @@ const deliveryControllers = (fastify: FastifyInstance, options, done) => {
     ) => {
       const { title, polygon } = req.body;
       const coordinates = polygon.coordinates;
-
+      
+      console.log(`req.body: ${req.body}`)
+      console.log(`coordinates: ${coordinates}`)
+      
       let coords = "";
       for (let i = 0; i < coordinates.length; i++) {
         coords += "(";
@@ -101,27 +64,68 @@ const deliveryControllers = (fastify: FastifyInstance, options, done) => {
 
       try {
         fastify.pg.transact(async (client) => {
-          await client.query(
-            `INSERT INTO delivery_zone (title, polygon) VALUES('${title}', 'POLYGON(${coords})')`
-          );
-          const { rows } = await client.query(
-            `SELECT id, title, st_astext(polygon) as polygon FROM delivery_zone WHERE title = '${title}'`
+          const id = await client.query(
+            `INSERT INTO delivery_zone (title, polygon) VALUES('${title}', 'POLYGON(${coords})') RETURNING id;`
           );
 
-          const response = {
-            id: rows[0].id,
-            title: rows[0].title,
-            polygon: {
-              type: "Polygon",
-              coordinates: rows[0].polygon,
-            },
-          };
 
-          console.log(response);
+          for (let el of id ) {
+            console.log(el)
+          }
 
-          return {
-            response,
-          };
+          // const { rows } = await client.query(
+          //   `SELECT id, title, st_astext(polygon) as polygon FROM delivery_zone WHERE id = ${id};`
+          // );
+
+          // console.log(rows)
+
+          // return id
+
+          // const { rows } = await client.query(
+          //   `SELECT id, title, st_astext(polygon) as polygon FROM delivery_zone WHERE title = '${title}'`
+          // );
+
+          // const result = rows.forEach((zone) => {
+          //   const rings = zone.polygon.split("),(");
+  
+          //   const polygon = rings.reduce((acc, element) => {
+          //     const coordinates = element.split(",");
+          //     const res = coordinates.reduce((acc1, element1) => {
+          //       acc1.push(JSON.parse("[" + element1.match(/\d+/g) + "]"));
+          //       return acc1;
+          //     }, []);
+          //     acc.push(res);
+          //     return acc;
+          //   }, []);
+  
+          //   return {
+          //     id: zone.id,
+          //     title: zone.title,
+          //     polygon: {
+          //       type: "Polygon",
+          //       coordinates: polygon,
+          //     },
+          //   };
+          // });
+
+          // reply.code(200).send(result)
+
+          // console.log(`result: ${result}`)
+
+          // const response = {
+          //   id: rows[0].id,
+          //   title: rows[0].title,
+          //   polygon: {
+          //     type: "Polygon",
+          //     coordinates: rows[0].polygon,
+          //   },
+          // };
+
+          // console.log(response);
+
+          // return {
+          //   response,
+          // };
           // reply.code(200).send(response);
         });
       } catch (error) {

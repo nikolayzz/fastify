@@ -1,16 +1,14 @@
+import { FastifyInstance } from "fastify";
+import homeController from "./controllers/home.controller";
+
 const fastify = require("fastify");
 const fastifyEnv = require("@fastify/env");
 const deliveryControllers = require("./controllers/delivery.controller");
 
 function buildServer() {
-  const app = fastify();
+  const app:FastifyInstance = fastify();
 
-  app.get("/", async (req, reply) => {
-    return {
-      hello: "world",
-    };
-  });
-
+  app.register(homeController, {prefix: '/'})
   app.register(deliveryControllers, { prefix: "/delivery-zones" });
 
   const schema = {
